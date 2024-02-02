@@ -17,15 +17,15 @@
     - `/` base endpoint: this should function as the health check endpoint for other services to monitor the availability of this endpoint
     - `tickers` - returns a list of tickers that the endpoint supports
     - `/returns` - takes in three path parameters `ticker`, `start_date`, and `end_date` and returns a JSON object with the time series of daily returns
-    - `/correlation` - takes in 4 path parameters `ticker1`, `ticker2`, `start_date`, and `end_date` and returns the correlation between the daily returns time series following the same logic as the returns endpoint. The only difference is that the pandas `.corr()` function with the default 'Pearson' correlation is used to calculate the correlation between both series and this information is returned as a JSON object
-    - `/correlation_matrix` - handles POST requests and extracts a `CorrelationMatrixParams` object from the body. Return series are calculated for each ticker, concatenated, and `corr()` is called once again to get a correlation matrix
+    - `/correlation` - takes in 4 path parameters `ticker1`, `ticker2`, `start_date`, and `end_date` and returns the correlation between the daily returns time series
+    - `/correlation_matrix` - handles POST requests and extracts a `CorrelationMatrixParams` object from the body.
 
   - **Helper Functions**
 
     - Since the endpoints share logic, three helper functions were created:
       - `price_data`: fetches price data
       - `returns`: fetches daily returns
-      - `correlations`: constructs a correlation matrix from each of the provided tickers in the post body
+      - `correlations`: constructs a correlation matrix using Pearson correlation coefficient from each of the provided tickers in the post body
 
   - **Documentation**
 
