@@ -1,6 +1,8 @@
 # findata_service
 
-Example of a RESTful API service to query financial data
+Example of a RESTful API service to query financial data using FastAPI
+
+Checkout the walkthrough guide for a discussion on this service: [Walkthrough Guide](docs/walkthrough.md)
 
 ## Instructions to Run
 
