@@ -106,6 +106,18 @@ def get_returns(
     )
 
 
+@app.get("/spilled_returns/{ticker}/{start_date}/{end_date}")
+def spilled_returns(
+    *,
+    ticker: TickerParam = Depends(TickerParamDependency()),
+    start_date: str,
+    end_date: str,
+) -> list:
+    rtns_df = returns(ticker, start_date, end_date).reset_index(drop=False)
+    rtns_df["Date"] = rtns_df["Date"].dt.strftime("%Y-%m-%d")
+    return rtns_df.values.tolist()
+
+
 @app.get("/correlation/{ticker1}/{ticker2}/{start_date}/{end_date}")
 def get_correlation(
     *,
