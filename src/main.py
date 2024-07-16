@@ -145,6 +145,15 @@ def post_correlation_matrix(params: CorrelationMatrixParams):
     return json.dumps(correlations(tickers, start_date, end_date).to_dict())
 
 
+@app.post("/correlation_matrix_spilled/")
+def post_correlation_matrix_spilled(params: CorrelationMatrixParams) -> list:
+    tickers = [t.ticker for t in params.tickers]
+    start_date = params.start_date
+    end_date = params.end_date
+    df = correlations(tickers, start_date, end_date)
+    return [[None] + df.columns.tolist()] + df.reset_index(drop=False).values.tolist()
+
+
 @app.get("/goldman/")
 async def goldman():
     return "hi goldman"
