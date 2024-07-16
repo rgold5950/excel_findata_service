@@ -85,8 +85,8 @@ async def welcome():
 
 
 @app.get("/tickers")
-async def get_tickers():
-    return json.dumps({"tickers": SUPPORTED_TICKERS})
+async def get_tickers() -> list:
+    return [[t] for t in SUPPORTED_TICKERS]
 
 
 @app.get("/returns/{ticker}/{start_date}/{end_date}")
@@ -297,7 +297,7 @@ def openapi_to_custom_functions(openapi_schema: dict) -> dict:
                         }
                     )
 
-            # Extract response type
+            # Extract response type and dimensionality
             responses = operation.get("responses", {})
             for status, response in responses.items():
                 if status.startswith("2"):  # Look for successful responses
@@ -310,7 +310,7 @@ def openapi_to_custom_functions(openapi_schema: dict) -> dict:
                         function["result"]["type"] = result_type
                         function["result"]["dimensionality"] = (
                             "matrix"
-                            if schema.get("type", ExcelParamType.ANY.value) == "array"
+                            if schema.get("type") == "array" or "items" in schema
                             else "scalar"
                         )
                         break
