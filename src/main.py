@@ -9,9 +9,31 @@ from functools import cache
 import json
 from starlette.middleware.base import BaseHTTPMiddleware
 from IPython import embed
+from enum import Enum
+from datetime import datetime
+from fastapi.responses import JSONResponse
+from enum import Enum
+
+
+class ExcelParamType(Enum):
+    BOOLEAN = "boolean"
+    NUMBER = "number"
+    STRING = "string"
+    ANY = "any"
+
+
+from enum import Enum
+
+
+class ExcelParamType(Enum):
+    BOOLEAN = "boolean"
+    NUMBER = "number"
+    STRING = "string"
+    ANY = "any"
+
 
 app = FastAPI()
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -25,6 +47,8 @@ app.add_middleware(
 )
 
 SUPPORTED_TICKERS = ["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA"]
+BATCHABLE = ["/agg_return/{ticker}/{return_window}"]
+BATCH_ENDPOINT_MAPPING = {"/agg_return/{ticker}/{return_window}": "/batch_agg_return/"}
 
 
 class TickerParam(BaseModel):
@@ -39,9 +63,32 @@ class TickerParam(BaseModel):
         return t
 
 
+class ReturnWindow(Enum):
+    YTD = "YTD"
+    MTD = "MTD"
+
+
+class ReturnWindowParam(BaseModel):
+    return_window: ReturnWindow
+
+
+class AggReturnParam(BaseModel):
+    ticker: str
+    return_window: ReturnWindow
+
+
+class AggReturnParams(BaseModel):
+    params: List[AggReturnParam]
+
+
 class TickerParamDependency:
     def __call__(self, ticker_param: TickerParam = Depends()):
         return ticker_param.ticker
+
+
+class ReturnParamDependency:
+    def __call__(self, return_param: ReturnWindowParam = Depends()):
+        return return_param.return_window
 
 
 class CorrelationMatrixParams(BaseModel):
@@ -106,6 +153,49 @@ def get_returns(
     )
 
 
+def calc_agg_return(ticker: str, return_window: ReturnWindow) -> float:
+    today = datetime.today()
+    last_bday = today - pd.offsets.BDay(1)
+    last_bday = last_bday.normalize()
+    if return_window == ReturnWindow.MTD:
+        start_date = datetime(last_bday.year, last_bday.month, 1)
+    elif return_window == ReturnWindow.YTD:
+        start_date = datetime(last_bday.year, 1, 2)
+    else:
+        return f"Return Window {return_window} Not Supported"
+    if last_bday <= start_date:
+        return json.dumps(0.0)
+    rtns_df = price_data(
+        ticker,
+        start_date=start_date.date().isoformat(),
+        end_date=today.date().isoformat(),
+    ).sort_index(ascending=True)["Adj Close"]
+    start = rtns_df.iloc[0]
+    end = rtns_df.iloc[-1]
+    return (start - end) / start
+
+
+@app.get("/agg_return/{ticker}/{return_window}")
+def get_returns_agg(
+    *,
+    ticker: TickerParam = Depends(TickerParamDependency()),
+    return_window: ReturnWindow,
+) -> float:
+    return json.dumps(calc_agg_return(ticker, return_window))
+
+
+@app.post("/batch_agg_return/")
+def batch_get_returns_agg(agg_return_params: AggReturnParams) -> list[dict[str, float]]:
+    results = []
+    for params in agg_return_params.params:
+        try:
+            result = {"result": calc_agg_return(params.ticker, params.return_window)}
+        except Exception as e:
+            result = {"error": e}
+        results.append(result)
+    return results
+
+
 @app.get("/spilled_returns/{ticker}/{start_date}/{end_date}")
 def spilled_returns(
     *,
@@ -166,31 +256,6 @@ async def thisonechangesalot(
     return json.dumps({"some_param": some_param, "another_param": another_param})
 
 
-from fastapi.responses import JSONResponse
-from fastapi import Response
-import httpx
-from IPython import embed
-import time
-from enum import Enum
-
-
-class ExcelParamType(Enum):
-    BOOLEAN = "boolean"
-    NUMBER = "number"
-    STRING = "string"
-    ANY = "any"
-
-
-from enum import Enum
-
-
-class ExcelParamType(Enum):
-    BOOLEAN = "boolean"
-    NUMBER = "number"
-    STRING = "string"
-    ANY = "any"
-
-
 def openapi_to_custom_functions(openapi_schema: dict) -> dict:
     custom_functions = {"allowCustomDataForDataTypeAny": True, "functions": []}
     endpoint_map = {}
@@ -207,6 +272,8 @@ def openapi_to_custom_functions(openapi_schema: dict) -> dict:
             if operation.get("summary") == "Get Functions":
                 continue  # skip the functions endpoint
             name = operation.get("summary").upper().replace(" ", "_")
+            if name.upper().startswith("BATCH"):
+                continue  # these functions should only be called indirectly via the non-batch equivalents
             function = {
                 "description": operation.get("summary", ""),
                 "id": name + now,  # Use the modified path as the ID
@@ -217,6 +284,11 @@ def openapi_to_custom_functions(openapi_schema: dict) -> dict:
                     "dimensionality": "scalar",
                 },
             }
+            batchable = False
+            batch_endpoint = ""
+            if path in BATCHABLE:
+                batchable = True
+                batch_endpoint = BATCH_ENDPOINT_MAPPING[path]
             endpoint_info_item = {
                 "endpoint": path,
                 "method": method,
@@ -230,6 +302,8 @@ def openapi_to_custom_functions(openapi_schema: dict) -> dict:
                     for p in operation.get("parameters", [])
                     if p["in"] == "query"
                 ],
+                "batchable": batchable,
+                "batch_endpoint": batch_endpoint,
             }
             # Parse body parameters
             body_parameters = []
